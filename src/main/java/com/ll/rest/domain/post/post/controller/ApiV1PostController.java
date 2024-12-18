@@ -72,4 +72,27 @@ public class ApiV1PostController {
                 "%d번 글이 수정되었습니다.".formatted(id)
         );
     }
+
+
+    record PostWriteReqBody(
+            @NotBlank
+            @Length(min = 2)
+            String title,
+            @NotBlank
+            @Length(min = 2)
+            String content
+    ) {
+    }
+
+    @PostMapping
+    public RsData writeItem(
+            @RequestBody @Valid PostWriteReqBody reqBody
+    ) {
+        Post post = postService.write(reqBody.title, reqBody.content);
+
+        return new RsData(
+                "200-1",
+                "%d번 글이 작성되었습니다.".formatted(post.getId())
+        );
+    }
 }
