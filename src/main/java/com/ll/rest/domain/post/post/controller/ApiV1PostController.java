@@ -29,9 +29,9 @@ public class ApiV1PostController {
     public PostDto getItem(
             @PathVariable long id
     ) {
-        Post post = postService.findById(id).get();
-
-        return new PostDto(post);
+        return postService.findById(id)
+                .map(PostDto::new)
+                .orElseThrow();
     }
 
 
