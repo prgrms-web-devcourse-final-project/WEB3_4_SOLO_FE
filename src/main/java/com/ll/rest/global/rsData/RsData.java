@@ -7,10 +7,10 @@ import lombok.Getter;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @AllArgsConstructor
 @Getter
-public class RsData {
+public class RsData<T> {
     private String resultCode;
     private String msg;
-    private Object data;
+    private T data;
 
     public RsData(String resultCode, String msg) {
         this(resultCode, msg, null);
