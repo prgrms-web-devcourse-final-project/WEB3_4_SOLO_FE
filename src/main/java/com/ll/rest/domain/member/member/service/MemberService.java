@@ -6,6 +6,8 @@ import com.ll.rest.global.exceptions.ServiceException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 @Service
 @RequiredArgsConstructor
 public class MemberService {
@@ -30,5 +32,9 @@ public class MemberService {
                 .build();
 
         return memberRepository.save(member);
+    }
+
+    public Optional<Member> findByUsername(String username) {
+        return memberRepository.findByUsername(username);
     }
 }
