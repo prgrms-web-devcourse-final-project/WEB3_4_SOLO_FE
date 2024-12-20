@@ -1,5 +1,7 @@
 package com.ll.rest.global.baseInit;
 
+import com.ll.rest.domain.member.member.entity.Member;
+import com.ll.rest.domain.member.member.service.MemberService;
 import com.ll.rest.domain.post.post.entity.Post;
 import com.ll.rest.domain.post.post.service.PostService;
 import lombok.RequiredArgsConstructor;
