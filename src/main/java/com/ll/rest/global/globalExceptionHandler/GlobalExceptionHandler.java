@@ -1,6 +1,7 @@
 package com.ll.rest.global.globalExceptionHandler;
 
 import com.ll.rest.global.app.AppConfig;
+import com.ll.rest.global.exceptions.ServiceException;
 import com.ll.rest.global.rsData.RsData;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -52,16 +53,15 @@ public class GlobalExceptionHandler {
                 ));
     }
 
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<RsData<Void>> handle(RuntimeException ex) {
+    @ExceptionHandler(ServiceException.class)
+    public ResponseEntity<RsData<Void>> handle(ServiceException ex) {
 
         if (AppConfig.isNotProd()) ex.printStackTrace();
 
+        RsData<Void> rsData = ex.getRsData();
+
         return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(new RsData<>(
-                        "400-1",
-                        ex.getMessage()
-                ));
+                .status(rsData.getStatusCode())
+                .body(rsData);
     }
 }
