@@ -2,11 +2,7 @@ package com.ll.rest.domain.member.member.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ll.rest.domain.member.member.entity.Member;
-import com.ll.rest.domain.post.post.entity.Post;
-import com.ll.rest.global.jpa.entity.BaseTime;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import lombok.*;
+import lombok.Getter;
 
 import java.time.LocalDateTime;
 
