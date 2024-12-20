@@ -15,9 +15,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoSuchElementException.class)
     public ResponseEntity<RsData<Void>> handle(NoSuchElementException ex) {
         return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+                .status(HttpStatus.NOT_FOUND)
                 .body(new RsData<>(
-                        "400-1",
+                        "404-1",
                         "해당 데이터가 존재하지 않습니다."
                 ));
     }
