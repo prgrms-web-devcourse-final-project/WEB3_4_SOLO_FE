@@ -1,0 +1,447 @@
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import Link from 'next/link';
+import MainLayout from '../components/layout/MainLayout';
+import Button from '../components/ui/Button';
+import AccountCard from '../components/account/AccountCard';
+import { formatCurrency, formatDate, getTransactionTypeLabel } from '../utils/formatters';
+import accountService from '../api/accountService';
+import transferService from '../api/transferService';
+
+const HomePage = () => {
+  const router = useRouter();
+  const [accounts, setAccounts] = useState([]);
+  const [recentTransactions, setRecentTransactions] = useState([]);
+  const [myProducts, setMyProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [totalBalance, setTotalBalance] = useState(0);
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+
+  // 클라이언트 사이드 렌더링 여부 확인
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  // 로그인 확인
+  useEffect(() => {
+    if (!isClient) return;
+    
+    const token = localStorage.getItem('token');
+    const userData = localStorage.getItem('user');
+    
+    if (!token) {
+      // 토큰이 없으면 로그인 페이지로 리디렉션
+      router.push('/login');
+      return;
+    }
+    
+    setIsAuthenticated(true);
+    
+    if (userData) {
+      try {
+        setUser(JSON.parse(userData));
+      } catch (error) {
+        console.error('사용자 데이터 파싱 오류:', error);
+      }
+    }
+  }, [router, isClient]);
+
+  // 데이터 불러오기
+  useEffect(() => {
+    if (!isClient) return;
+    
+    // 로그인 상태가 아니면 데이터를 불러오지 않음
+    if (!isAuthenticated) {
+      return;
+    }
+    
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // 계좌 목록 불러오기
+        try {
+          const accountsData = await accountService.getAllAccounts();
+          
+          // 계좌 데이터가 배열인지 확인하고 적절히 처리
+          const accountsList = Array.isArray(accountsData) ? accountsData : 
+                             (accountsData && accountsData.content && Array.isArray(accountsData.content)) ? 
+                             accountsData.content : [];
+          
+          setAccounts(accountsList);
+          
+          // 총 잔액 계산 (KRW 계좌만)
+          const total = accountsList
+            .filter(account => account.currency === 'KRW' && account.isActive)
+            .reduce((sum, account) => sum + parseFloat(account.balance || 0), 0);
+          
+          setTotalBalance(total);
+        } catch (accountErr) {
+          console.error('계좌 정보를 불러오는 중 오류가 발생했습니다:', accountErr);
+          // 계좌 정보 오류는 빈 배열로 처리하여 "등록된 계좌가 없습니다" 메시지 표시
+          setAccounts([]);
+          setTotalBalance(0);
+        }
+        
+        // 최근 거래 내역 불러오기
+        try {
+          const transactionsData = await transferService.getAllTransfers({
+            page: 0,
+            size: 5,
+            sort: 'transactionDate,desc'
+          });
+          
+          setRecentTransactions(transactionsData.content || []);
+        } catch (transactionErr) {
+          console.error('거래 내역을 불러오는 중 오류가 발생했습니다:', transactionErr);
+          // 거래 내역 오류는 빈 배열로 처리하여 "최근 거래 내역이 없습니다" 메시지 표시
+          setRecentTransactions([]);
+        }
+        
+        // 내 금융상품 목록 불러오기
+        try {
+          // 실제 API 연동 시 활성화
+          // const productsData = await axios.get('/api/products/subscriptions');
+          // setMyProducts(productsData.data.content || []);
+          
+          // 임시로 빈 배열 설정
+          setMyProducts([]);
+        } catch (productsErr) {
+          console.error('금융상품 정보를 불러오는 중 오류가 발생했습니다:', productsErr);
+          // 금융상품 정보 오류는 빈 배열로 처리
+          setMyProducts([]);
+        }
+        
+        setError(null);
+      } catch (err) {
+        console.error('데이터를 불러오는 중 오류가 발생했습니다:', err);
+        setError('데이터를 불러오는 중 일시적인 오류가 발생했습니다.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [isAuthenticated, isClient]);
+
+  // 거래 유형에 따른 스타일
+  const getTransactionStyle = (transaction) => {
+    const type = transaction.transactionType || transaction.type;
+    
+    if (type === 'DEPOSIT' || type === 'INTEREST') {
+      return {
+        amountClass: 'text-green-600',
+        icon: <PlusIcon className="h-4 w-4 text-green-500" />,
+        prefix: '+'
+      };
+    } else if (type === 'WITHDRAWAL' || type === 'TRANSFER' || type === 'PAYMENT' || type === 'FEE' || type === 'LOAN_PAYMENT') {
+      return {
+        amountClass: 'text-red-600',
+        icon: <MinusIcon className="h-4 w-4 text-red-500" />,
+        prefix: '-'
+      };
+    } else {
+      return {
+        amountClass: 'text-gray-600',
+        icon: <ArrowIcon className="h-4 w-4 text-gray-500" />,
+        prefix: ''
+      };
+    }
+  };
+
+  // 클라이언트 사이드에서만 인증 상태 확인
+  if (isClient && !isAuthenticated) {
+    return <div className="loading">로그인 페이지로 이동 중...</div>;
+  }
+
+  return (
+    <MainLayout>
+      <div className="pb-8">
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+            <p className="mt-2 text-gray-600">데이터를 불러오는 중...</p>
+          </div>
+        ) : error ? (
+          <div className="bg-red-50 p-4 rounded-md mb-6">
+            <div className="flex items-start">
+              <div className="mr-2 p-1 bg-red-100 rounded-full">
+                <AlertIcon className="h-4 w-4 text-red-600" />
+              </div>
+              <div>
+                <p className="text-red-600 font-medium">서비스 접속에 문제가 발생했습니다</p>
+                <p className="text-sm text-red-500 mt-1 mb-3">
+                  {error}
+                </p>
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.location.reload()}
+                  >
+                    새로고침
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => router.push('/products')}
+                  >
+                    금융상품 페이지로 이동
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* 환영 메시지 및 요약 정보 */}
+            <div className="bg-blue-600 text-white rounded-lg p-6 mb-8">
+              <h1 className="text-2xl font-bold mb-2">
+                안녕하세요, {user?.name || user?.username || '고객'}님!
+              </h1>
+              <p className="mb-4 opacity-90">오늘도 Pleasy Bank와 함께 편리한 금융 생활을 즐겨보세요.</p>
+              
+              <div className="mt-6">
+                <p className="text-sm opacity-80">총 자산</p>
+                <p className="text-3xl font-bold">{formatCurrency(totalBalance)}</p>
+              </div>
+            </div>
+
+            {/* 계좌 목록 (최대 2개) */}
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">내 계좌</h2>
+                <Link href="/myproducts">
+                  <span className="text-blue-600 text-sm hover:underline cursor-pointer">전체 계좌보기</span>
+                </Link>
+              </div>
+              
+              {accounts.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {accounts.slice(0, 2).map(account => (
+                    <AccountCard key={account.id} account={account} />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-gray-50 rounded-lg">
+                  <p className="text-gray-500 mb-4">등록된 계좌가 없습니다</p>
+                  <Button variant="primary" size="sm">계좌 개설하기</Button>
+                </div>
+              )}
+            </div>
+
+            {/* 최근 거래 내역 */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">최근 거래 내역</h2>
+                <Link href="/transactions">
+                  <span className="text-blue-600 text-sm hover:underline cursor-pointer">전체 보기</span>
+                </Link>
+              </div>
+              
+              {recentTransactions.length > 0 ? (
+                <ul className="divide-y divide-gray-200">
+                  {recentTransactions.map((transaction) => {
+                    const { amountClass, icon, prefix } = getTransactionStyle(transaction);
+                    const transactionDate = transaction.transactionDate || transaction.transactionDatetime || transaction.createdAt;
+                    
+                    return (
+                      <li key={transaction.id} className="py-3">
+                        <div className="flex items-center">
+                          <div className="mr-2 bg-gray-100 rounded-full p-1.5">
+                            {icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {transaction.description || getTransactionTypeLabel(transaction.transactionType || transaction.type)}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">
+                              {formatDate(transactionDate, 'datetime')}
+                            </p>
+                          </div>
+                          <div className="inline-flex text-right">
+                            <p className={`text-sm font-semibold ${amountClass}`}>
+                              {prefix}{formatCurrency(transaction.amount)}
+                            </p>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="text-center py-6 bg-gray-50 rounded-md">
+                  <p className="text-gray-500">최근 거래 내역이 없습니다</p>
+                </div>
+              )}
+            </div>
+            
+            {/* 내 금융상품 */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">내 금융상품</h2>
+                <Link href="/myproducts">
+                  <span className="text-blue-600 text-sm hover:underline cursor-pointer">전체 보기</span>
+                </Link>
+              </div>
+              
+              {myProducts.length > 0 ? (
+                <div className="space-y-3">
+                  {myProducts.slice(0, 2).map((product) => (
+                    <div key={product.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                      <div className="flex justify-between">
+                        <div>
+                          <h3 className="font-medium">{product.productName}</h3>
+                          <p className="text-sm text-gray-600">{product.productType === 'SAVINGS' ? '적금' : product.productType === 'DEPOSIT' ? '예금' : '투자상품'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium">{formatCurrency(product.amount)}</p>
+                          <p className="text-xs text-gray-500">연 {product.interestRate}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {myProducts.length > 2 && (
+                    <p className="text-center text-sm text-gray-500">외 {myProducts.length - 2}개 상품이 있습니다.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-6 bg-gray-50 rounded-md">
+                  <p className="text-gray-600 mb-4">현재 보유하고 계신 금융상품이 없습니다.</p>
+                  <p className="text-gray-500 mb-4">'금융상품'에서 금융상품을 가입해주세요.</p>
+                  <Link href="/products">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                    >
+                      금융상품 페이지로 이동
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* 금융 상품 추천 */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+              <h2 className="text-xl font-bold mb-4">맞춤 금융상품</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors cursor-pointer">
+                  <div className="flex items-center mb-3">
+                    <div className="bg-blue-100 text-blue-700 p-1.5 rounded-full mr-2">
+                      <ChartIcon className="h-4 w-4 text-blue-700" />
+                    </div>
+                    <h3 className="font-medium">똑똑한 적금</h3>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-2">
+                    연 3.5% (12개월 기준)
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    소액으로 시작하는 스마트한 자산 관리
+                  </p>
+                </div>
+                
+                <div className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors cursor-pointer">
+                  <div className="flex items-center mb-3">
+                    <div className="bg-green-100 text-green-700 p-1.5 rounded-full mr-2">
+                      <HomeIcon className="h-4 w-4 text-green-700" />
+                    </div>
+                    <h3 className="font-medium">내 집 마련 대출</h3>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-2">
+                    연 4.25%부터
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    나만의 공간을 위한 맞춤형 금융 솔루션
+                  </p>
+                </div>
+              </div>
+              
+              <div className="mt-4 text-center">
+                <Link href="/products">
+                  <span className="inline-block mt-2 text-blue-600 text-sm hover:underline cursor-pointer">
+                    전체 금융상품 보기
+                  </span>
+                </Link>
+              </div>
+            </div>
+
+            {/* 안내 배너 */}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-5">
+              <div className="flex items-start">
+                <div className="mr-2 p-1 bg-yellow-100 rounded-full">
+                  <AlertIcon className="h-4 w-4 text-yellow-500" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-yellow-800 mb-1">보안 인증 강화</h3>
+                  <p className="text-sm text-yellow-700">
+                    고객님의 소중한 자산을 보호하기 위해 2단계 인증을 설정하세요.
+                  </p>
+                  <button className="mt-2 text-sm text-yellow-800 font-medium hover:underline">
+                    설정하기
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </MainLayout>
+  );
+};
+
+// 아이콘 컴포넌트들
+function PlusIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function MinusIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M3.75 12a.75.75 0 01.75-.75h15a.75.75 0 010 1.5h-15a.75.75 0 01-.75-.75z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function ArrowIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M12.97 3.97a.75.75 0 011.06 0l7.5 7.5a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 11-1.06-1.06l6.22-6.22H3a.75.75 0 010-1.5h16.19l-6.22-6.22a.75.75 0 010-1.06z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function ChartIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M2.25 13.5a8.25 8.25 0 018.25-8.25.75.75 0 01.75.75v6.75H18a.75.75 0 01.75.75 8.25 8.25 0 01-16.5 0z" clipRule="evenodd" />
+      <path fillRule="evenodd" d="M12.75 3a.75.75 0 01.75-.75 8.25 8.25 0 018.25 8.25.75.75 0 01-.75.75h-7.5a.75.75 0 01-.75-.75V3z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function HomeIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M11.47 3.84a.75.75 0 011.06 0l8.69 8.69a.75.75 0 101.06-1.06l-8.689-8.69a2.25 2.25 0 00-3.182 0l-8.69 8.69a.75.75 0 001.061 1.06l8.69-8.69z" />
+      <path d="M12 5.432l8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 01-.75-.75v-4.5a.75.75 0 00-.75-.75h-3a.75.75 0 00-.75.75V21a.75.75 0 01-.75.75H5.625a1.875 1.875 0 01-1.875-1.875v-6.198a2.29 2.29 0 00.091-.086L12 5.43z" />
+    </svg>
+  );
+}
+
+function AlertIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+export default HomePage; 
