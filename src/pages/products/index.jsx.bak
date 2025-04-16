@@ -1,0 +1,735 @@
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import MainLayout from '../../components/layout/MainLayout';
+import Button from '../../components/ui/Button';
+import Modal from '../../components/ui/Modal';
+import Input from '../../components/ui/Input';
+import { formatCurrency } from '../../utils/formatters';
+
+const ProductsPage = () => {
+  const router = useRouter();
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isSubscribeModalOpen, setIsSubscribeModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [subscriptionForm, setSubscriptionForm] = useState({
+    accountId: '',
+    amount: '',
+    term: ''
+  });
+  const [accounts, setAccounts] = useState([]);
+  const [formErrors, setFormErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [subscriptionSuccess, setSubscriptionSuccess] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [sortOption, setSortOption] = useState('latest');
+  
+  // 하드코딩된 기본 상품 데이터 (백엔드 API 호출 실패 시 폴백으로 사용)
+  const defaultProducts = [
+    {
+      id: 1,
+      name: 'pleasy 정기예금',
+      category: '정기예금',
+      interestRate: 3.5,
+      term: 12,
+      minAmount: 100000,
+      description: '안정적인 수익을 원하는 고객을 위한 플리지 정기예금 상품입니다.',
+      features: ['원금 보장', '확정 금리', '중도해지 가능'],
+      createdAt: '2025-03-01T00:00:00',
+      image: '/images/deposit.jpg'
+    },
+    {
+      id: 2,
+      name: 'pleasy 자유입출금',
+      category: '입출금',
+      interestRate: 1.2,
+      term: null,
+      minAmount: 10000,
+      description: '언제든지 자유롭게 입출금이 가능한 계좌입니다.',
+      features: ['수수료 면제', '자유로운 입출금', '스마트폰 뱅킹'],
+      createdAt: '2025-03-05T00:00:00',
+      image: '/images/checking.jpg'
+    },
+    {
+      id: 3,
+      name: 'pleasy 주택청약저축',
+      category: '적금',
+      interestRate: 2.8,
+      term: 24,
+      minAmount: 50000,
+      description: '내 집 마련의 꿈을 위한 주택청약저축 상품입니다.',
+      features: ['주택청약 자격 부여', '세금 혜택', '우대금리 적용'],
+      createdAt: '2025-03-10T00:00:00',
+      image: '/images/savings.jpg'
+    }
+  ];
+
+  // 상품 목록 불러오기
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoading(true);
+      try {
+        // fetch API 사용하여 직접 전체 URL로 요청
+        const response = await fetch('http://localhost:8080/api/products', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error(`API 오류: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('백엔드에서 가져온 상품 데이터:', data);
+        
+        if (data && Array.isArray(data.content)) {
+          // 백엔드에서 받은 데이터 가공
+          const processedProducts = data.content.map(product => ({
+            ...product,
+            features: Array.isArray(product.features) ? product.features : 
+                     (product.features ? product.features.split(',').map(item => item.trim()) : [])
+          }));
+          
+          console.log('가공된 상품 데이터:', processedProducts);
+          setProducts(processedProducts);
+        } else if (data && !data.content && Array.isArray(data)) {
+          // 배열 형태로 직접 반환되는 경우
+          const processedProducts = data.map(product => ({
+            ...product,
+            features: Array.isArray(product.features) ? product.features : 
+                     (product.features ? product.features.split(',').map(item => item.trim()) : [])
+          }));
+          
+          console.log('가공된 상품 데이터(배열):', processedProducts);
+          setProducts(processedProducts);
+        } else {
+          console.log('백엔드에서 상품을 찾을 수 없어 기본 데이터를 사용합니다.', data);
+          // 백엔드 API 호출 실패 시 하드코딩된 데이터 사용
+          setProducts(defaultProducts);
+        }
+      } catch (error) {
+        console.error('상품 데이터 로딩 실패:', error);
+        setError('상품 데이터를 불러오는 중 오류가 발생했습니다. 기본 데이터를 표시합니다.');
+        // API 호출 실패 시 하드코딩된 데이터 사용
+        setProducts(defaultProducts);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+  }, []);
+
+  // 계좌 목록 불러오기
+  const fetchAccounts = async () => {
+    try {
+      // 백엔드 API에서 계좌 목록 가져오기
+      try {
+        // accountService 사용
+        const accountsData = await import('../../api/accountService').then(module => {
+          return module.default.getMyAccounts();
+        });
+        
+        // 응답 처리
+        const accountsList = Array.isArray(accountsData) ? 
+          accountsData : (accountsData.content && Array.isArray(accountsData.content) ? 
+            accountsData.content : []);
+            
+        setAccounts(accountsList);
+        console.log('계좌 목록:', accountsList);
+      } catch (apiError) {
+        console.error('계좌 API 호출 오류:', apiError);
+        
+        // API 오류 시 대체 데이터 사용
+        const projectAccounts = [
+          { id: 1, accountNumber: '123-456-789012', accountName: '기본 입출금 계좌', balance: 1500000 },
+          { id: 2, accountNumber: '234-567-890123', accountName: '급여 계좌', balance: 3000000 },
+        ];
+        
+        setAccounts(projectAccounts);
+      }
+    } catch (err) {
+      console.error('계좌 목록을 불러오는 중 오류가 발생했습니다:', err);
+    }
+  };
+
+  // 상품 가입하기 버튼 클릭 핸들러
+  const handleSubscribe = (product) => {
+    // 로그인 여부 확인
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('로그인이 필요한 서비스입니다.');
+      router.push('/login');
+      return;
+    }
+
+    // 선택한 상품 설정
+    setSelectedProduct(product);
+    
+    // 기본값 설정
+    setSubscriptionForm({
+      accountId: '',
+      amount: product.minAmount ? String(product.minAmount) : '',
+      term: product.term ? String(product.term) : '' 
+    });
+    
+    // 오류 초기화
+    setFormErrors({});
+    
+    // 계좌 목록 불러오기
+    fetchAccounts();
+    
+    // 모달 열기
+    setIsSubscribeModalOpen(true);
+  };
+
+  // 입력 변경 핸들러
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setSubscriptionForm({
+      ...subscriptionForm,
+      [name]: value
+    });
+    
+    // 실시간 유효성 검사
+    if (formErrors[name]) {
+      setFormErrors({
+        ...formErrors,
+        [name]: '' // 입력 시 오류 메시지 제거
+      });
+    }
+  };
+
+  // 폼 제출 핸들러
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // 유효성 검사
+    const errors = {};
+    
+    // 자유입출금 상품이 아닌 경우에만 금액 검사
+    if (selectedProduct.term !== null) {
+      if (!subscriptionForm.amount) {
+        errors.amount = '금액을 입력해주세요.';
+      } else if (
+        (selectedProduct.minAmount && parseFloat(subscriptionForm.amount) < selectedProduct.minAmount) ||
+        (selectedProduct.maxAmount && parseFloat(subscriptionForm.amount) > selectedProduct.maxAmount)
+      ) {
+        errors.amount = `${formatCurrency(selectedProduct.minAmount || 0)} ~ ${formatCurrency(selectedProduct.maxAmount || '제한없음')} 사이의 금액을 입력해주세요.`;
+      }
+    }
+    
+    // 오류가 있으면 제출 중단
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+    
+    // 제출 진행
+    setIsSubmitting(true);
+    
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error("인증 토큰이 없습니다. 로그인이 필요합니다.");
+      }
+      
+      // 계좌번호 생성: 111-222-333333 형식
+      const random1 = Math.floor(100 + Math.random() * 900).toString();
+      const random2 = Math.floor(100 + Math.random() * 900).toString();
+      const random3 = Math.floor(100000 + Math.random() * 900000).toString();
+      const formattedAccNum = `${random1}-${random2}-${random3}`;
+      
+      console.log('생성된 계좌번호:', formattedAccNum);
+      console.log('인증 토큰:', token);
+
+      // 계좌 생성 API 호출 (요청 형식 수정)
+      const accountRequest = {
+        bank: "PLEASY",
+        accountName: selectedProduct.name,
+        accountType: selectedProduct.category,
+        accountNumber: formattedAccNum,
+        balance: selectedProduct.term === null ? 0 : parseFloat(subscriptionForm.amount), // initialBalance 대신 balance 사용
+        currency: "KRW" // 통화 정보 추가
+      };
+      
+      console.log('계좌 생성 요청 데이터:', accountRequest);
+      
+      // 상대 경로 대신 절대 경로 사용
+      const response = await fetch(
+        'http://localhost:8080/api/accounts', 
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(accountRequest)
+        }
+      );
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('계좌 개설 실패:', response.status, errorText);
+        throw new Error(`계좌 개설 실패: ${response.status} ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log('계좌 개설 성공:', data);
+      
+      // 자유입출금이 아닌 경우에만 상품 가입 처리
+      if (selectedProduct.term !== null) {
+        // 생성된 계좌로 상품 가입
+        const subscriptionData = {
+          productId: selectedProduct.id,
+          accountId: data.id,
+          amount: parseFloat(subscriptionForm.amount),
+          currency: "KRW",
+          maturityDate: new Date(Date.now() + selectedProduct.term * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          status: "ACTIVE",
+          autoRenew: false
+        };
+        
+        console.log('상품 가입 요청 데이터:', subscriptionData);
+        
+        const productResponse = await fetch(
+          'http://localhost:8080/api/products/subscriptions',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(subscriptionData)
+          }
+        );
+        
+        if (!productResponse.ok) {
+          const errorText = await productResponse.text();
+          console.error('상품 가입 실패:', response.status, errorText);
+          throw new Error(`상품 가입 실패: ${response.status} ${errorText}`);
+        }
+        
+        console.log('상품 가입 성공:', await productResponse.json());
+      }
+      
+      // 성공 상태로 변경
+      setSubscriptionSuccess(true);
+      
+      // 3초 후 모달 닫기
+      setTimeout(() => {
+        setIsSubscribeModalOpen(false);
+        setSubscriptionSuccess(false);
+        // 페이지 리로드 또는 내 상품 페이지로 이동
+        router.push('/myproducts');
+      }, 3000);
+      
+      // 성공 시 모달 닫기 및 알림
+      setIsSubscribeModalOpen(false);
+      setAmount('');
+      setSelectedProduct(null);
+      
+      // 상품 목록 리로드 (선택 사항)
+      fetchAccountList();
+      
+      // toast 대신 alert 사용
+      alert("계좌 개설 성공! 금융 상품 계좌가 성공적으로 개설되었습니다.");
+    } catch (error) {
+      console.error('상품 신청 오류:', error);
+      // toast 대신 alert 사용
+      alert("계좌 개설 실패: " + (error.message || "상품 신청 과정에서 오류가 발생했습니다."));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 모달 닫기 핸들러
+  const handleCloseModal = () => {
+    if (subscriptionSuccess) {
+      // 성공 후 모달 닫을 때 상태 초기화
+      setIsSubscribeModalOpen(false);
+      setSelectedProduct(null);
+      setSubscriptionForm({ accountId: '', amount: '', term: '' });
+      setFormErrors({});
+      setSubscriptionSuccess(false);
+    } else {
+      setIsSubscribeModalOpen(false);
+    }
+  };
+
+  // 상품 유형에 따른 스타일
+  const getProductStyle = (category) => {
+    // 아이콘 컴포넌트 정의되어 있는지 확인
+    const hasIcons = typeof ChartIcon !== 'undefined';
+
+    switch(category) {
+      case 'SAVINGS':
+        return {
+          bgColor: 'bg-blue-100',
+          iconColor: 'text-blue-700',
+          icon: hasIcons ? <ChartIcon className="h-4 w-4" /> : <span>💰</span>,
+          label: '적금상품'
+        };
+      case 'DEPOSIT':
+        return {
+          bgColor: 'bg-yellow-100',
+          iconColor: 'text-yellow-700',
+          icon: hasIcons ? <WalletIcon className="h-4 w-4" /> : <span>🏦</span>,
+          label: '예금상품'
+        };
+      case 'LOAN':
+        return {
+          bgColor: 'bg-green-100', 
+          iconColor: 'text-green-700',
+          icon: hasIcons ? <HomeIcon className="h-4 w-4" /> : <span>🏡</span>,
+          label: '대출상품'
+        };
+      case 'FUND':
+        return {
+          bgColor: 'bg-purple-100',
+          iconColor: 'text-purple-700',
+          icon: hasIcons ? <InvestmentIcon className="h-4 w-4" /> : <span>📈</span>,
+          label: '투자상품'
+        };
+      default:
+        return {
+          bgColor: 'bg-gray-100',
+          iconColor: 'text-gray-700',
+          icon: hasIcons ? <DefaultIcon className="h-4 w-4" /> : <span>💼</span>,
+          label: '금융상품'
+        };
+    }
+  };
+
+  return (
+    <MainLayout>
+      <div className="pb-8">
+        <h1 className="text-2xl font-bold mb-6">금융상품</h1>
+        
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+            <p className="mt-2 text-gray-600">금융상품 정보를 불러오는 중...</p>
+          </div>
+        ) : error ? (
+          <div className="bg-red-50 p-4 rounded-md">
+            <p className="text-red-600">{error}</p>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mt-3"
+              onClick={() => window.location.reload()}
+            >
+              다시 시도
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* 금융상품 카테고리 필터 (향후 기능) */}
+            <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+              <div className="flex flex-wrap gap-2">
+                <Button 
+                  variant="primary" 
+                  size="sm"
+                >
+                  전체 보기
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                >
+                  적금 상품
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                >
+                  예금 상품
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                >
+                  대출 상품
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                >
+                  투자 상품
+                </Button>
+              </div>
+            </div>
+            
+            {/* 상품 목록 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {products.map(product => {
+                const { bgColor, iconColor, icon, label } = getProductStyle(product.category);
+                
+                return (
+                  <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden transition-transform hover:shadow-lg hover:scale-[1.02]">
+                    <div className="p-6">
+                      <div className="flex items-center mb-4">
+                        <div className={`${bgColor} p-1.5 rounded-full mr-2`}>
+                          {icon}
+                        </div>
+                        <div>
+                          <span className={`text-xs font-medium ${iconColor} px-2 py-1 ${bgColor} rounded-full`}>
+                            {label}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <h2 className="text-xl font-bold mb-2">{product.name}</h2>
+                      <p className="text-gray-600 text-sm mb-4">{product.description}</p>
+                      
+                      <div className="flex flex-col space-y-2 mb-4">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 text-sm">금리</span>
+                          <span className="font-medium">연 {product.interestRate}%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 text-sm">기간</span>
+                          <span className="font-medium">
+                            {product.category === 'LOAN' ? `최대 ${product.term / 12}년` : 
+                            product.term ? `${product.term}개월` : '무제한'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500 text-sm">한도</span>
+                          <span className="font-medium">
+                            {product.minAmount ? formatCurrency(product.minAmount) : '제한없음'} ~ {product.maxAmount ? formatCurrency(product.maxAmount) : '제한없음'}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4">
+                        <Button 
+                          variant="primary" 
+                          size="md" 
+                          fullWidth
+                          onClick={() => handleSubscribe(product)}
+                        >
+                          {product.category === 'LOAN' ? '대출 신청하기' : '가입하기'}
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-gray-50 px-6 py-4">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">특징</h3>
+                      <ul className="text-sm text-gray-600">
+                        {(Array.isArray(product.features) && product.features.length > 0) ? 
+                          product.features.map((feature, index) => (
+                            <li key={index} className="flex items-center mb-1">
+                              <span className="text-green-500 mr-2">✓</span>
+                              {feature}
+                            </li>
+                          )) : 
+                          (
+                            <li className="flex items-center mb-1">
+                              <span className="text-green-500 mr-2">✓</span>
+                              {typeof product.features === 'string' ? product.features : '정보 없음'}
+                            </li>
+                          )
+                        }
+                      </ul>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {products.length === 0 && (
+              <div className="text-center py-12 bg-gray-50 rounded-lg">
+                <p className="text-gray-600 mb-4">등록된 금융상품이 없습니다</p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      
+      {/* 상품 가입 모달 */}
+      <Modal
+        isOpen={isSubscribeModalOpen}
+        onClose={handleCloseModal}
+        title={subscriptionSuccess ? "가입 완료" : selectedProduct ? `${selectedProduct.name} 가입하기` : "상품 가입"}
+        size="md"
+      >
+        {subscriptionSuccess ? (
+          <div className="text-center py-4">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+              <svg className="h-6 w-6 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">상품 가입이 완료되었습니다</h3>
+            <p className="text-gray-500 mb-4">
+              {selectedProduct?.name} 상품에 성공적으로 가입되었습니다.<br />
+              내 금융상품 페이지에서 확인하실 수 있습니다.
+            </p>
+            <div className="flex justify-center space-x-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={handleCloseModal}
+              >
+                닫기
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  handleCloseModal();
+                  router.push('/myproducts');
+                }}
+              >
+                내 금융상품 보기
+              </Button>
+            </div>
+          </div>
+        ) : selectedProduct && (
+          <form onSubmit={handleSubmit}>
+            <div className="mb-6">
+              <div className="bg-gray-50 p-4 rounded-md mb-4">
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-600">상품명</span>
+                  <span className="font-medium">{selectedProduct.name}</span>
+                </div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-600">금리</span>
+                  <span className="font-medium">연 {selectedProduct.interestRate}%</span>
+                </div>
+                {selectedProduct.term && (
+                  <div className="flex justify-between mb-2">
+                    <span className="text-gray-600">기간</span>
+                    <span className="font-medium">
+                      {selectedProduct.category === 'LOAN' ? `최대 ${selectedProduct.term / 12}년` : 
+                      selectedProduct.term ? `${selectedProduct.term}개월` : '무제한'}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-600">가입 한도</span>
+                  <span className="font-medium">
+                    {selectedProduct.minAmount ? formatCurrency(selectedProduct.minAmount) : '제한없음'} ~ {selectedProduct.maxAmount ? formatCurrency(selectedProduct.maxAmount) : '제한없음'}
+                  </span>
+                </div>
+              </div>
+              
+              {/* 계좌 생성 안내 메시지 */}
+              <div className="bg-blue-50 p-4 rounded-md mb-4">
+                <div className="flex items-start">
+                  <svg className="h-5 w-5 text-blue-500 mt-0.5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm text-blue-700">
+                    {selectedProduct.term === null ? 
+                      '자유입출금 상품은 계좌 개설 즉시 이용 가능합니다.' : 
+                      '계좌 개설 후 자동으로 상품 가입이 진행됩니다.'}
+                  </p>
+                </div>
+              </div>
+              
+              {/* 자유입출금 상품이 아닌 경우에만 금액 입력 필드 표시 */}
+              {selectedProduct.term !== null && (
+                <Input
+                  label="가입 금액"
+                  id="amount"
+                  name="amount"
+                  type="number"
+                  value={subscriptionForm.amount}
+                  onChange={handleInputChange}
+                  placeholder="가입할 금액을 입력하세요"
+                  error={formErrors.amount}
+                  required={true}
+                  min={selectedProduct.minAmount || 0}
+                  max={selectedProduct.maxAmount || undefined}
+                  className="mb-4"
+                />
+              )}
+              
+              {formErrors.submit && (
+                <div className="bg-red-50 p-3 rounded-md text-red-600 text-sm mt-4">
+                  {formErrors.submit}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleCloseModal}
+                disabled={isSubmitting}
+              >
+                취소
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? '처리 중...' : '가입하기'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+    </MainLayout>
+  );
+};
+
+// 아이콘 컴포넌트
+function ChartIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M2.25 13.5a8.25 8.25 0 018.25-8.25.75.75 0 01.75.75v6.75H18a.75.75 0 01.75.75 8.25 8.25 0 01-16.5 0z" clipRule="evenodd" />
+      <path fillRule="evenodd" d="M12.75 3a.75.75 0 01.75-.75 8.25 8.25 0 018.25 8.25.75.75 0 01-.75.75h-7.5a.75.75 0 01-.75-.75V3z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function HomeIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M11.47 3.84a.75.75 0 011.06 0l8.69 8.69a.75.75 0 101.06-1.06l-8.689-8.69a2.25 2.25 0 00-3.182 0l-8.69 8.69a.75.75 0 001.061 1.06l8.69-8.69z" />
+      <path d="M12 5.432l8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 01-.75-.75v-4.5a.75.75 0 00-.75-.75h-3a.75.75 0 00-.75.75V21a.75.75 0 01-.75.75H5.625a1.875 1.875 0 01-1.875-1.875v-6.198a2.29 2.29 0 00.091-.086L12 5.43z" />
+    </svg>
+  );
+}
+
+function InvestmentIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M18.375 2.25c-1.035 0-1.875.84-1.875 1.875v15.75c0 1.035.84 1.875 1.875 1.875h.75c1.035 0 1.875-.84 1.875-1.875V4.125c0-1.036-.84-1.875-1.875-1.875h-.75zM9.75 8.625c0-1.036.84-1.875 1.875-1.875h.75c1.036 0 1.875.84 1.875 1.875v11.25c0 1.035-.84 1.875-1.875 1.875h-.75a1.875 1.875 0 01-1.875-1.875V8.625zM3 13.125c0-1.036.84-1.875 1.875-1.875h.75c1.036 0 1.875.84 1.875 1.875v6.75c0 1.035-.84 1.875-1.875 1.875h-.75A1.875 1.875 0 013 19.875v-6.75z" />
+    </svg>
+  );
+}
+
+function DefaultIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M12 1.5c-1.921 0-3.816.111-5.68.327-1.497.174-2.57 1.46-2.57 2.93V21.75a.75.75 0 001.029.696l3.471-1.388 3.472 1.388a.75.75 0 00.556 0l3.472-1.388 3.471 1.388a.75.75 0 001.029-.696V4.757c0-1.47-1.073-2.756-2.57-2.93A49.255 49.255 0 0012 1.5zm3.53 7.28a.75.75 0 00-1.06-1.06l-6 6a.75.75 0 101.06 1.06l6-6zM8.625 9a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0zm5.625 3.375a1.125 1.125 0 100 2.25 1.125 1.125 0 000-2.25z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function CheckIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 01.208 1.04l-9 13.5a.75.75 0 01-1.154.114l-6-6a.75.75 0 011.06-1.06l5.353 5.353 8.493-12.739a.75.75 0 011.04-.208z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function WalletIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M2.273 5.625A4.483 4.483 0 015.25 4.5h13.5c1.141 0 2.183.425 2.977 1.125A3 3 0 0018.75 3H5.25a3 3 0 00-2.977 2.625zM2.273 8.625A4.483 4.483 0 015.25 7.5h13.5c1.141 0 2.183.425 2.977 1.125A3 3 0 0018.75 6H5.25a3 3 0 00-2.977 2.625zM5.25 9a3 3 0 00-3 3v6a3 3 0 003 3h13.5a3 3 0 003-3v-6a3 3 0 00-3-3H15a.75.75 0 00-.75.75 2.25 2.25 0 01-4.5 0A.75.75 0 009 9H5.25z" />
+    </svg>
+  );
+}
+
+export default ProductsPage; 

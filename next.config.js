@@ -16,25 +16,18 @@ const nextConfig = {
     return config;
   },
   
-  // API 요청 프록시 설정
+  // API 요청 프록시 설정 - 백엔드 서버로 모든 요청 프록시
   async rewrites() {
     return [
       {
-        // 백엔드 API로 요청 프록시
-        source: '/api/accounts/:path*',
-        destination: 'http://localhost:8080/api/accounts/:path*',
+        // 모든 API 요청을 백엔드로 리다이렉트
+        source: '/api/:path*',
+        destination: 'http://localhost:8080/api/:path*',
       },
       {
-        source: '/api/user/:path*',
-        destination: 'http://localhost:8080/api/user/:path*',
-      },
-      {
-        source: '/api/transfer',
-        destination: 'http://localhost:8080/api/transfer',
-      },
-      {
-        source: '/api/openbanking/:path*',
-        destination: 'http://localhost:8080/api/openbanking/:path*',
+        // API v1 엔드포인트 명시적 프록시
+        source: '/api/v1/:path*',
+        destination: 'http://localhost:8080/api/v1/:path*',
       },
       {
         // OAuth 인증 관련 요청 프록시
@@ -44,11 +37,7 @@ const nextConfig = {
       {
         source: '/login/oauth2/:path*',
         destination: 'http://localhost:8080/login/oauth2/:path*',
-      },
-      {
-        source: '/auth/:path*',
-        destination: 'http://localhost:8080/auth/:path*',
-      },
+      }
     ];
   },
 };
